@@ -183,7 +183,7 @@ function App() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <button onClick={handleVisitStore}>Visit Store</button>
+          <button onClick={handleVisitStore}>Login</button>
         </section>
       ) : (
         <section className="profile-welcome">
