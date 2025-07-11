@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
-// Initialize Segment analytics.js
 import Analytics from "analytics";
 import segmentPlugin from "@analytics/segment";
 
@@ -22,7 +21,7 @@ const PRODUCTS = {
       price: "$199",
       category: "Racket",
       image:
-        "https://cdn.pixabay.com/photo/2016/11/21/15/39/tennis-1845603_1280.jpg",
+        "https://cdn.pixabay.com/photo/2016/11/https://images.pexels.com/photos/207983/pexels-photo-207983.jpeg?auto=compress&cs=tinysrgb&w=600/15/39/tennis-1845603_1280.jpg",
     },
     {
       id: "m-shirt-1",
@@ -53,16 +52,13 @@ const PRODUCTS = {
   ],
 };
 
-// Simple hash function to create userId from email (same as Coach app)
 const hashEmail = (email) => {
   if (!email) return null;
-  let hash = 0,
-    i,
-    chr;
-  for (i = 0; i < email.length; i++) {
-    chr = email.charCodeAt(i);
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    const chr = email.charCodeAt(i);
     hash = (hash << 5) - hash + chr;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0;
   }
   return "user_" + Math.abs(hash);
 };
@@ -72,6 +68,7 @@ function App() {
   const [name, setName] = useState("");
   const [profile, setProfile] = useState(null);
   const [purchasedItems, setPurchasedItems] = useState([]);
+  const [cart, setCart] = useState([]);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("email");
@@ -90,7 +87,6 @@ function App() {
   const segmentIdentify = ({ email, name }) => {
     const userId = hashEmail(email);
     analytics.identify(userId, { email, name });
-    console.log("Segment Identify:", { userId, email, name });
   };
 
   const segmentTrack = (event, props) => {
@@ -104,11 +100,9 @@ function App() {
     const trackProps = { ...props };
     if (userId) {
       trackProps.userId = userId;
-      // Optionally remove email from props to avoid duplication
-      // delete trackProps.email;
     }
+
     analytics.track(event, trackProps);
-    console.log("Segment Track:", event, trackProps);
   };
 
   const handleVisitStore = () => {
@@ -123,8 +117,28 @@ function App() {
     }
   };
 
-  const handlePurchase = (product) => {
-    if (profile) {
+  const handleAddToCart = (product) => {
+    if (cart.some((item) => item.id === product.id)) return;
+    setCart([...cart, product]);
+    segmentTrack("Added to Cart", {
+      productId: product.id,
+      productName: product.name,
+      price: product.price,
+      category: product.category,
+    });
+  };
+
+  const handleRemoveFromCart = (productId) => {
+    setCart(cart.filter((item) => item.id !== productId));
+  };
+
+  const handlePurchase = () => {
+    if (!profile) {
+      alert("You must be logged in to purchase.");
+      return;
+    }
+
+    cart.forEach((product) => {
       segmentTrack("Order Completed", {
         email: profile.email,
         name: profile.name,
@@ -133,10 +147,11 @@ function App() {
         price: product.price,
         category: product.category,
       });
-      setPurchasedItems([...purchasedItems, product.id]);
-    } else {
-      alert("You must be logged in to purchase.");
-    }
+    });
+
+    const purchasedIds = cart.map((item) => item.id);
+    setPurchasedItems([...purchasedItems, ...purchasedIds]);
+    setCart([]);
   };
 
   const handleLogout = () => {
@@ -144,8 +159,12 @@ function App() {
     setProfile(null);
     setEmail("");
     setName("");
+    setCart([]);
     setPurchasedItems([]);
+
     segmentTrack("Logged Out", {});
+    analytics.reset(); // 🔁 Generates new anonymous ID
+    console.log("Analytics: reset user session");
   };
 
   const renderProducts = (products) =>
@@ -156,13 +175,43 @@ function App() {
         <p className="price">{product.price}</p>
         <p className="category">{product.category}</p>
         <button
-          onClick={() => handlePurchase(product)}
-          disabled={!profile || purchasedItems.includes(product.id)}
+          onClick={() => handleAddToCart(product)}
+          disabled={
+            cart.some((item) => item.id === product.id) ||
+            purchasedItems.includes(product.id)
+          }
         >
-          {purchasedItems.includes(product.id) ? "Purchased" : "Buy Now"}
+          {purchasedItems.includes(product.id)
+            ? "Purchased"
+            : cart.some((item) => item.id === product.id)
+            ? "In Cart"
+            : "Add to Cart"}
         </button>
       </div>
     ));
+
+  const renderCart = () => (
+    <section className="cart-section">
+      <h2>Your Cart 🛒</h2>
+      {cart.length === 0 ? (
+        <p>Cart is empty.</p>
+      ) : (
+        <>
+          <ul>
+            {cart.map((item) => (
+              <li key={item.id}>
+                {item.name} - {item.price}{" "}
+                <button onClick={() => handleRemoveFromCart(item.id)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+          <button className="checkout-button" onClick={handlePurchase}>
+            Checkout
+          </button>
+        </>
+      )}
+    </section>
+  );
 
   return (
     <div className="app-container">
@@ -200,6 +249,8 @@ function App() {
         <h2>Women's Collection</h2>
         <div className="product-grid">{renderProducts(PRODUCTS.women)}</div>
       </section>
+
+      {renderCart()}
     </div>
   );
 }
